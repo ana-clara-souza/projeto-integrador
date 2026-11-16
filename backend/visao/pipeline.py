@@ -3,8 +3,8 @@
 Passos (para o processamento id_proc):
  1. converte o vídeo enviado para MP4 H.264 (storage/videos/<pasta>/original.mp4);
  2. lê TODOS os frames e passa cada um pelo modelo;
- 3. desenha as caixas e grava o vídeo anotado (storage/processamentos/<id>/anotado.mp4);
- 4. a cada intervalo_extracao_segundos guarda no banco o frame ORIGINAL (tabela frames)
+ 3. desfoca rostos e placas de veículos, desenha as caixas de sinalização e grava o vídeo anotado (storage/processamentos/<id>/anotado.mp4);
+ 4. a cada intervalo_extracao_segundos guarda no banco o frame ANONIMIZADO (tabela frames)
     e as caixas encontradas nele (tabela deteccoes);
  5. grava as métricas e o status final em processamentos.
 """
@@ -17,6 +17,7 @@ import cv2
 import config
 from db import repositorio as repo
 from visao.detector import desenhar
+from visao.privacidade import Anonimizador
 from visao.video import EscritorVideo, converter_h264, ler_info
 
 log = logging.getLogger(__name__)
@@ -57,6 +58,7 @@ def processar(id_proc, detector):
         escritor = EscritorVideo(anotado, info["largura"], info["altura"], fps)
 
         cap = cv2.VideoCapture(str(original))
+        anonimizador = Anonimizador()
         lote, n, total_det, frames_com_placa = [], 0, 0, 0
         try:
             while True:
@@ -64,8 +66,9 @@ def processar(id_proc, detector):
                 if not ok:
                     break
                 n += 1                                     # frames numerados a partir de 1
-                caixas = detector.detectar(frame)
-                if (n - 1) % passo == 0:                   # frame guardado no banco (imagem original)
+                caixas = detector.detectar(frame)  # placas de trânsito (YOLO)
+                anonimizador.aplicar(frame)  # rostos + placas de veículos
+                if (n - 1) % passo == 0:                   # frame guardado no banco (anonimizado)
                     ok_jpg, jpg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, config.QUALIDADE_JPEG])
                     if not ok_jpg:
                         raise RuntimeError(f"Falha ao codificar o frame {n}.")
